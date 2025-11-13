@@ -212,7 +212,7 @@ deploymentSpec:
           \ or \"\")\n        s3_access_key: S3 access key\n        s3_secret_key:\
           \ S3 secret key\n        download_path: Local path to download files to\n\
           \    \"\"\"\n    import boto3\n    import os\n    from pathlib import Path\n\
-          \n    print(f\"\U0001F4E5 Downloading from S3: {s3_endpoint}/{s3_bucket}/{s3_prefix}\"\
+          \n    print(f\"Downloading from S3: {s3_endpoint}/{s3_bucket}/{s3_prefix}\"\
           )\n\n    # Create S3 client (Minio is S3-compatible)\n    s3_client = boto3.client(\n\
           \        's3',\n        endpoint_url=s3_endpoint,\n        aws_access_key_id=s3_access_key,\n\
           \        aws_secret_access_key=s3_secret_key,\n        verify=False  # For\
@@ -230,8 +230,8 @@ deploymentSpec:
           \         Path(local_file).parent.mkdir(parents=True, exist_ok=True)\n\n\
           \            # Download file\n            print(f\"  Downloading: {s3_key}\
           \ -> {local_file}\")\n            s3_client.download_file(s3_bucket, s3_key,\
-          \ local_file)\n            downloaded_count += 1\n\n    print(f\"\u2705\
-          \ Downloaded {downloaded_count} files to {download_path}\")\n\n"
+          \ local_file)\n            downloaded_count += 1\n\n    print(f\"Downloaded\
+          \ {downloaded_count} files to {download_path}\")\n\n"
         image: registry.access.redhat.com/ubi9/python-311:latest
     exec-ingest-document-batch:
       container:
@@ -288,26 +288,26 @@ deploymentSpec:
           \ in [200, 201]:\n                    result = response.json()\n       \
           \             # vector-search-service returns document_id on success\n \
           \                   doc_id = result.get('document_id', 'unknown')\n    \
-          \                print(f\"\u2705 {filename}: Document ID {doc_id}\")\n \
-          \                   batch_results.append({\n                        \"file\"\
-          : file_path,\n                        \"success\": True,\n             \
-          \           \"document_id\": doc_id\n                    })\n          \
-          \          successful += 1\n                else:\n                    error_detail\
-          \ = response.text\n                    print(f\"\u274C {filename}: HTTP\
-          \ {response.status_code} - {error_detail}\")\n                    batch_results.append({\n\
-          \                        \"file\": file_path,\n                        \"\
-          success\": False,\n                        \"error\": f\"HTTP {response.status_code}:\
-          \ {error_detail}\"\n                    })\n                    failed +=\
-          \ 1\n\n            except Exception as e:\n                print(f\"\u274C\
-          \ {file_path}: {str(e)}\")\n                batch_results.append({\n   \
-          \                 \"file\": file_path,\n                    \"success\"\
-          : False,\n                    \"error\": str(e)\n                })\n  \
-          \              failed += 1\n\n    # Save results\n    summary = {\n    \
-          \    \"total\": len(files),\n        \"successful\": successful,\n     \
-          \   \"failed\": failed,\n        \"results\": batch_results\n    }\n\n \
-          \   with open(results.path, 'w') as f:\n        json.dump(summary, f, indent=2)\n\
-          \n    print(f\"\\n\U0001F4CA Summary: {successful}/{len(files)} files ingested\
-          \ successfully\")\n\n"
+          \                print(f\"SUCCESS: {filename}: Document ID {doc_id}\")\n\
+          \                    batch_results.append({\n                        \"\
+          file\": file_path,\n                        \"success\": True,\n       \
+          \                 \"document_id\": doc_id\n                    })\n    \
+          \                successful += 1\n                else:\n              \
+          \      error_detail = response.text\n                    print(f\"FAILED:\
+          \ {filename}: HTTP {response.status_code} - {error_detail}\")\n        \
+          \            batch_results.append({\n                        \"file\": file_path,\n\
+          \                        \"success\": False,\n                        \"\
+          error\": f\"HTTP {response.status_code}: {error_detail}\"\n            \
+          \        })\n                    failed += 1\n\n            except Exception\
+          \ as e:\n                print(f\"ERROR: {file_path}: {str(e)}\")\n    \
+          \            batch_results.append({\n                    \"file\": file_path,\n\
+          \                    \"success\": False,\n                    \"error\"\
+          : str(e)\n                })\n                failed += 1\n\n    # Save\
+          \ results\n    summary = {\n        \"total\": len(files),\n        \"successful\"\
+          : successful,\n        \"failed\": failed,\n        \"results\": batch_results\n\
+          \    }\n\n    with open(results.path, 'w') as f:\n        json.dump(summary,\
+          \ f, indent=2)\n\n    print(f\"\\nSummary: {successful}/{len(files)} files\
+          \ ingested successfully\")\n\n"
         image: registry.access.redhat.com/ubi9/python-311:latest
     exec-verify-ingestion:
       container:
@@ -352,8 +352,8 @@ deploymentSpec:
           \    \"\"\")\n\n    doc_stats = cur.fetchone()\n\n    # Query embedding\
           \ statistics\n    cur.execute(\"\"\"\n        SELECT COUNT(*) as total_embeddings\n\
           \        FROM embeddings\n    \"\"\")\n\n    emb_stats = cur.fetchone()\n\
-          \n    print(f\"\\n\U0001F4CA Database Statistics:\")\n    print(f\"  Total\
-          \ documents: {doc_stats[0]}\")\n    print(f\"  Total collections: {doc_stats[1]}\"\
+          \n    print(f\"\\nDatabase Statistics:\")\n    print(f\"  Total documents:\
+          \ {doc_stats[0]}\")\n    print(f\"  Total collections: {doc_stats[1]}\"\
           )\n    print(f\"  Total embeddings: {emb_stats[0]}\")\n\n    cur.close()\n\
           \    conn.close()\n\n"
         image: registry.access.redhat.com/ubi9/python-311:latest

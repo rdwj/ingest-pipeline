@@ -38,7 +38,7 @@ def download_from_s3(
     import os
     from pathlib import Path
 
-    print(f"📥 Downloading from S3: {s3_endpoint}/{s3_bucket}/{s3_prefix}")
+    print(f"Downloading from S3: {s3_endpoint}/{s3_bucket}/{s3_prefix}")
 
     # Create S3 client (Minio is S3-compatible)
     s3_client = boto3.client(
@@ -79,7 +79,7 @@ def download_from_s3(
             s3_client.download_file(s3_bucket, s3_key, local_file)
             downloaded_count += 1
 
-    print(f"✅ Downloaded {downloaded_count} files to {download_path}")
+    print(f"Downloaded {downloaded_count} files to {download_path}")
 
 
 @component(
@@ -170,7 +170,7 @@ def ingest_document_batch(
                     result = response.json()
                     # vector-search-service returns document_id on success
                     doc_id = result.get('document_id', 'unknown')
-                    print(f"✅ {filename}: Document ID {doc_id}")
+                    print(f"SUCCESS: {filename}: Document ID {doc_id}")
                     batch_results.append({
                         "file": file_path,
                         "success": True,
@@ -179,7 +179,7 @@ def ingest_document_batch(
                     successful += 1
                 else:
                     error_detail = response.text
-                    print(f"❌ {filename}: HTTP {response.status_code} - {error_detail}")
+                    print(f"FAILED: {filename}: HTTP {response.status_code} - {error_detail}")
                     batch_results.append({
                         "file": file_path,
                         "success": False,
@@ -188,7 +188,7 @@ def ingest_document_batch(
                     failed += 1
 
             except Exception as e:
-                print(f"❌ {file_path}: {str(e)}")
+                print(f"ERROR: {file_path}: {str(e)}")
                 batch_results.append({
                     "file": file_path,
                     "success": False,
@@ -207,7 +207,7 @@ def ingest_document_batch(
     with open(results.path, 'w') as f:
         json.dump(summary, f, indent=2)
 
-    print(f"\n📊 Summary: {successful}/{len(files)} files ingested successfully")
+    print(f"\nSummary: {successful}/{len(files)} files ingested successfully")
 
 
 @component(
@@ -262,7 +262,7 @@ def verify_ingestion(
 
     emb_stats = cur.fetchone()
 
-    print(f"\n📊 Database Statistics:")
+    print(f"\nDatabase Statistics:")
     print(f"  Total documents: {doc_stats[0]}")
     print(f"  Total collections: {doc_stats[1]}")
     print(f"  Total embeddings: {emb_stats[0]}")
@@ -367,4 +367,4 @@ if __name__ == "__main__":
         pipeline_func=document_ingestion_pipeline,
         package_path="doc_ingestion_pipeline.yaml"
     )
-    print("✅ Pipeline compiled to doc_ingestion_pipeline.yaml")
+    print("Pipeline compiled to doc_ingestion_pipeline.yaml")
