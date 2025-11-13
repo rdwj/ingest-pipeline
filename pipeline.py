@@ -249,7 +249,6 @@ def verify_ingestion(
             COUNT(*) as total_documents,
             COUNT(DISTINCT collection_id) as total_collections
         FROM documents
-        WHERE metadata->>'source' = 'kubeflow-pipeline'
     """)
 
     doc_stats = cur.fetchone()

@@ -348,14 +348,13 @@ deploymentSpec:
           \ = conn.cursor()\n\n    # Query document statistics (vector-search-service\
           \ tables)\n    cur.execute(\"\"\"\n        SELECT\n            COUNT(*)\
           \ as total_documents,\n            COUNT(DISTINCT collection_id) as total_collections\n\
-          \        FROM documents\n        WHERE metadata->>'source' = 'kubeflow-pipeline'\n\
-          \    \"\"\")\n\n    doc_stats = cur.fetchone()\n\n    # Query embedding\
-          \ statistics\n    cur.execute(\"\"\"\n        SELECT COUNT(*) as total_embeddings\n\
-          \        FROM embeddings\n    \"\"\")\n\n    emb_stats = cur.fetchone()\n\
-          \n    print(f\"\\nDatabase Statistics:\")\n    print(f\"  Total documents:\
-          \ {doc_stats[0]}\")\n    print(f\"  Total collections: {doc_stats[1]}\"\
-          )\n    print(f\"  Total embeddings: {emb_stats[0]}\")\n\n    cur.close()\n\
-          \    conn.close()\n\n"
+          \        FROM documents\n    \"\"\")\n\n    doc_stats = cur.fetchone()\n\
+          \n    # Query embedding statistics\n    cur.execute(\"\"\"\n        SELECT\
+          \ COUNT(*) as total_embeddings\n        FROM embeddings\n    \"\"\")\n\n\
+          \    emb_stats = cur.fetchone()\n\n    print(f\"\\nDatabase Statistics:\"\
+          )\n    print(f\"  Total documents: {doc_stats[0]}\")\n    print(f\"  Total\
+          \ collections: {doc_stats[1]}\")\n    print(f\"  Total embeddings: {emb_stats[0]}\"\
+          )\n\n    cur.close()\n    conn.close()\n\n"
         image: registry.access.redhat.com/ubi9/python-311:latest
 pipelineInfo:
   description: Discovers and ingests documents into the RAG system from S3/Minio or
