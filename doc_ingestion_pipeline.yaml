@@ -1,0 +1,538 @@
+# PIPELINE DEFINITION
+# Name: document-ingestion-pipeline
+# Description: Discovers and ingests documents into the RAG system from S3/Minio or local storage
+# Inputs:
+#    batch_size: int [Default: 10.0]
+#    collection_name: str [Default: 'default']
+#    db_host: str [Default: 'postgres-pgvector.servicenow-ai-poc.svc.cluster.local']
+#    db_name: str [Default: 'ragdb']
+#    db_password: str [Default: '']
+#    db_port: str [Default: '5432']
+#    db_user: str [Default: 'raguser']
+#    documents_path: str [Default: '/tmp/documents']
+#    file_extensions: list [Default: ['.md', '.txt', '.html']]
+#    s3_access_key: str [Default: '']
+#    s3_bucket: str [Default: '']
+#    s3_endpoint: str [Default: '']
+#    s3_prefix: str [Default: '']
+#    s3_secret_key: str [Default: '']
+#    service_url: str [Default: 'http://vector-search-service.servicenow-ai-poc.svc.cluster.local:8000']
+#    use_s3: bool [Default: True]
+components:
+  comp-condition-1:
+    dag:
+      tasks:
+        download-from-s3:
+          cachingOptions:
+            enableCache: true
+          componentRef:
+            name: comp-download-from-s3
+          inputs:
+            parameters:
+              download_path:
+                componentInputParameter: pipelinechannel--documents_path
+              s3_access_key:
+                componentInputParameter: pipelinechannel--s3_access_key
+              s3_bucket:
+                componentInputParameter: pipelinechannel--s3_bucket
+              s3_endpoint:
+                componentInputParameter: pipelinechannel--s3_endpoint
+              s3_prefix:
+                componentInputParameter: pipelinechannel--s3_prefix
+              s3_secret_key:
+                componentInputParameter: pipelinechannel--s3_secret_key
+          taskInfo:
+            name: download-from-s3
+    inputDefinitions:
+      parameters:
+        pipelinechannel--documents_path:
+          parameterType: STRING
+        pipelinechannel--s3_access_key:
+          parameterType: STRING
+        pipelinechannel--s3_bucket:
+          parameterType: STRING
+        pipelinechannel--s3_endpoint:
+          parameterType: STRING
+        pipelinechannel--s3_prefix:
+          parameterType: STRING
+        pipelinechannel--s3_secret_key:
+          parameterType: STRING
+        pipelinechannel--use_s3:
+          parameterType: BOOLEAN
+  comp-discover-documents:
+    executorLabel: exec-discover-documents
+    inputDefinitions:
+      parameters:
+        documents_path:
+          parameterType: STRING
+        file_extensions:
+          parameterType: LIST
+    outputDefinitions:
+      artifacts:
+        discovered_files:
+          artifactType:
+            schemaTitle: system.Dataset
+            schemaVersion: 0.0.1
+  comp-download-from-s3:
+    executorLabel: exec-download-from-s3
+    inputDefinitions:
+      parameters:
+        download_path:
+          defaultValue: /tmp/documents
+          description: Local path to download files to
+          isOptional: true
+          parameterType: STRING
+        s3_access_key:
+          description: S3 access key
+          parameterType: STRING
+        s3_bucket:
+          description: S3 bucket name
+          parameterType: STRING
+        s3_endpoint:
+          description: S3 endpoint URL (e.g., https://minio.apps.cluster.com)
+          parameterType: STRING
+        s3_prefix:
+          description: Prefix/folder in bucket (e.g., "kb/" or "")
+          parameterType: STRING
+        s3_secret_key:
+          description: S3 secret key
+          parameterType: STRING
+  comp-ingest-document-batch:
+    executorLabel: exec-ingest-document-batch
+    inputDefinitions:
+      artifacts:
+        discovered_files:
+          artifactType:
+            schemaTitle: system.Dataset
+            schemaVersion: 0.0.1
+      parameters:
+        batch_size:
+          parameterType: NUMBER_INTEGER
+        collection_name:
+          parameterType: STRING
+        service_url:
+          parameterType: STRING
+    outputDefinitions:
+      artifacts:
+        results:
+          artifactType:
+            schemaTitle: system.Dataset
+            schemaVersion: 0.0.1
+  comp-verify-ingestion:
+    executorLabel: exec-verify-ingestion
+    inputDefinitions:
+      artifacts:
+        results:
+          artifactType:
+            schemaTitle: system.Dataset
+            schemaVersion: 0.0.1
+      parameters:
+        db_host:
+          parameterType: STRING
+        db_name:
+          parameterType: STRING
+        db_password:
+          parameterType: STRING
+        db_port:
+          parameterType: STRING
+        db_user:
+          parameterType: STRING
+deploymentSpec:
+  executors:
+    exec-discover-documents:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - discover_documents
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.13.0'\
+          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"'  &&\
+          \  python3 -m pip install --quiet --no-warn-script-location 'requests' &&\
+          \ \"$0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef discover_documents(\n    documents_path: str,\n    file_extensions:\
+          \ List[str],\n    discovered_files: Output[Dataset]\n):\n    \"\"\"Discover\
+          \ all documents in the specified path\"\"\"\n    import os\n    import json\n\
+          \n    files = []\n    for root, _, filenames in os.walk(documents_path):\n\
+          \        for filename in filenames:\n            if any(filename.endswith(ext)\
+          \ for ext in file_extensions):\n                full_path = os.path.join(root,\
+          \ filename)\n                files.append(full_path)\n\n    print(f\"Discovered\
+          \ {len(files)} files\")\n\n    # Write discovered files to output\n    with\
+          \ open(discovered_files.path, 'w') as f:\n        json.dump(files, f)\n\n"
+        image: registry.access.redhat.com/ubi9/python-311:latest
+    exec-download-from-s3:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - download_from_s3
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.13.0'\
+          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"'  &&\
+          \  python3 -m pip install --quiet --no-warn-script-location 'boto3' && \"\
+          $0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef download_from_s3(\n    s3_endpoint: str,\n    s3_bucket: str,\n\
+          \    s3_prefix: str,\n    s3_access_key: str,\n    s3_secret_key: str,\n\
+          \    download_path: str = \"/tmp/documents\"\n):\n    \"\"\"\n    Download\
+          \ documents from S3/Minio to local storage\n\n    Args:\n        s3_endpoint:\
+          \ S3 endpoint URL (e.g., https://minio.apps.cluster.com)\n        s3_bucket:\
+          \ S3 bucket name\n        s3_prefix: Prefix/folder in bucket (e.g., \"kb/\"\
+          \ or \"\")\n        s3_access_key: S3 access key\n        s3_secret_key:\
+          \ S3 secret key\n        download_path: Local path to download files to\n\
+          \    \"\"\"\n    import boto3\n    import os\n    from pathlib import Path\n\
+          \n    print(f\"\U0001F4E5 Downloading from S3: {s3_endpoint}/{s3_bucket}/{s3_prefix}\"\
+          )\n\n    # Create S3 client (Minio is S3-compatible)\n    s3_client = boto3.client(\n\
+          \        's3',\n        endpoint_url=s3_endpoint,\n        aws_access_key_id=s3_access_key,\n\
+          \        aws_secret_access_key=s3_secret_key,\n        verify=False  # For\
+          \ self-signed certs in dev/staging\n    )\n\n    # Create download directory\n\
+          \    Path(download_path).mkdir(parents=True, exist_ok=True)\n\n    # List\
+          \ and download all objects with the prefix\n    paginator = s3_client.get_paginator('list_objects_v2')\n\
+          \    downloaded_count = 0\n\n    for page in paginator.paginate(Bucket=s3_bucket,\
+          \ Prefix=s3_prefix):\n        if 'Contents' not in page:\n            continue\n\
+          \n        for obj in page['Contents']:\n            s3_key = obj['Key']\n\
+          \n            # Skip directory markers\n            if s3_key.endswith('/'):\n\
+          \                continue\n\n            # Calculate local path (preserve\
+          \ directory structure)\n            relative_path = s3_key[len(s3_prefix):]\
+          \ if s3_prefix else s3_key\n            local_file = os.path.join(download_path,\
+          \ relative_path)\n\n            # Create local directory if needed\n   \
+          \         Path(local_file).parent.mkdir(parents=True, exist_ok=True)\n\n\
+          \            # Download file\n            print(f\"  Downloading: {s3_key}\
+          \ -> {local_file}\")\n            s3_client.download_file(s3_bucket, s3_key,\
+          \ local_file)\n            downloaded_count += 1\n\n    print(f\"\u2705\
+          \ Downloaded {downloaded_count} files to {download_path}\")\n\n"
+        image: registry.access.redhat.com/ubi9/python-311:latest
+    exec-ingest-document-batch:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - ingest_document_batch
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.13.0'\
+          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"'  &&\
+          \  python3 -m pip install --quiet --no-warn-script-location 'requests' &&\
+          \ \"$0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef ingest_document_batch(\n    discovered_files: Input[Dataset],\n\
+          \    service_url: str,\n    collection_name: str,\n    batch_size: int,\n\
+          \    results: Output[Dataset]\n):\n    \"\"\"Ingest documents in batches\
+          \ via the vector-search-service API\"\"\"\n    import json\n    import requests\n\
+          \    from pathlib import Path\n\n    # Load discovered files\n    with open(discovered_files.path,\
+          \ 'r') as f:\n        files = json.load(f)\n\n    print(f\"Processing {len(files)}\
+          \ files in batches of {batch_size}\")\n    print(f\"Target collection: {collection_name}\"\
+          )\n\n    batch_results = []\n    successful = 0\n    failed = 0\n\n    #\
+          \ Process in batches\n    for i in range(0, len(files), batch_size):\n \
+          \       batch = files[i:i + batch_size]\n        print(f\"Processing batch\
+          \ {i//batch_size + 1}: {len(batch)} files\")\n\n        for file_path in\
+          \ batch:\n            try:\n                # Read file content as text\n\
+          \                with open(file_path, 'r', encoding='utf-8') as f:\n   \
+          \                 file_content = f.read()\n\n                # Prepare request\
+          \ for vector-search-service\n                filename = Path(file_path).name\n\
+          \                payload = {\n                    \"content\": file_content,\n\
+          \                    \"metadata\": {\n                        \"source\"\
+          : \"kubeflow-pipeline\",\n                        \"file_path\": file_path,\n\
+          \                        \"filename\": filename\n                    }\n\
+          \                }\n\n                # Send to vector-search-service collection\
+          \ endpoint\n                response = requests.post(\n                \
+          \    f\"{service_url}/api/v1/collections/{collection_name}/documents\",\n\
+          \                    json=payload,\n                    headers={\"Content-Type\"\
+          : \"application/json\"},\n                    timeout=300  # Increased for\
+          \ large files\n                )\n\n                if response.status_code\
+          \ in [200, 201]:\n                    result = response.json()\n       \
+          \             # vector-search-service returns document_id on success\n \
+          \                   doc_id = result.get('document_id', 'unknown')\n    \
+          \                print(f\"\u2705 {filename}: Document ID {doc_id}\")\n \
+          \                   batch_results.append({\n                        \"file\"\
+          : file_path,\n                        \"success\": True,\n             \
+          \           \"document_id\": doc_id\n                    })\n          \
+          \          successful += 1\n                else:\n                    error_detail\
+          \ = response.text\n                    print(f\"\u274C {filename}: HTTP\
+          \ {response.status_code} - {error_detail}\")\n                    batch_results.append({\n\
+          \                        \"file\": file_path,\n                        \"\
+          success\": False,\n                        \"error\": f\"HTTP {response.status_code}:\
+          \ {error_detail}\"\n                    })\n                    failed +=\
+          \ 1\n\n            except Exception as e:\n                print(f\"\u274C\
+          \ {file_path}: {str(e)}\")\n                batch_results.append({\n   \
+          \                 \"file\": file_path,\n                    \"success\"\
+          : False,\n                    \"error\": str(e)\n                })\n  \
+          \              failed += 1\n\n    # Save results\n    summary = {\n    \
+          \    \"total\": len(files),\n        \"successful\": successful,\n     \
+          \   \"failed\": failed,\n        \"results\": batch_results\n    }\n\n \
+          \   with open(results.path, 'w') as f:\n        json.dump(summary, f, indent=2)\n\
+          \n    print(f\"\\n\U0001F4CA Summary: {successful}/{len(files)} files ingested\
+          \ successfully\")\n\n"
+        image: registry.access.redhat.com/ubi9/python-311:latest
+    exec-verify-ingestion:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - verify_ingestion
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.13.0'\
+          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"'  &&\
+          \  python3 -m pip install --quiet --no-warn-script-location 'psycopg2-binary'\
+          \ && \"$0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef verify_ingestion(\n    results: Input[Dataset],\n    db_host:\
+          \ str,\n    db_port: str,\n    db_user: str,\n    db_password: str,\n  \
+          \  db_name: str\n):\n    \"\"\"Verify documents were created in the database\"\
+          \"\"\n    import json\n    import psycopg2\n\n    # Load results\n    with\
+          \ open(results.path, 'r') as f:\n        summary = json.load(f)\n\n    print(f\"\
+          Ingestion results: {summary['successful']} successful, {summary['failed']}\
+          \ failed\")\n\n    # Connect to database\n    conn = psycopg2.connect(\n\
+          \        host=db_host,\n        port=db_port,\n        user=db_user,\n \
+          \       password=db_password,\n        database=db_name\n    )\n\n    cur\
+          \ = conn.cursor()\n\n    # Query document statistics (vector-search-service\
+          \ tables)\n    cur.execute(\"\"\"\n        SELECT\n            COUNT(*)\
+          \ as total_documents,\n            COUNT(DISTINCT collection_id) as total_collections\n\
+          \        FROM documents\n        WHERE metadata->>'source' = 'kubeflow-pipeline'\n\
+          \    \"\"\")\n\n    doc_stats = cur.fetchone()\n\n    # Query embedding\
+          \ statistics\n    cur.execute(\"\"\"\n        SELECT COUNT(*) as total_embeddings\n\
+          \        FROM embeddings\n    \"\"\")\n\n    emb_stats = cur.fetchone()\n\
+          \n    print(f\"\\n\U0001F4CA Database Statistics:\")\n    print(f\"  Total\
+          \ documents: {doc_stats[0]}\")\n    print(f\"  Total collections: {doc_stats[1]}\"\
+          )\n    print(f\"  Total embeddings: {emb_stats[0]}\")\n\n    cur.close()\n\
+          \    conn.close()\n\n"
+        image: registry.access.redhat.com/ubi9/python-311:latest
+pipelineInfo:
+  description: Discovers and ingests documents into the RAG system from S3/Minio or
+    local storage
+  name: document-ingestion-pipeline
+root:
+  dag:
+    tasks:
+      condition-1:
+        componentRef:
+          name: comp-condition-1
+        inputs:
+          parameters:
+            pipelinechannel--documents_path:
+              componentInputParameter: documents_path
+            pipelinechannel--s3_access_key:
+              componentInputParameter: s3_access_key
+            pipelinechannel--s3_bucket:
+              componentInputParameter: s3_bucket
+            pipelinechannel--s3_endpoint:
+              componentInputParameter: s3_endpoint
+            pipelinechannel--s3_prefix:
+              componentInputParameter: s3_prefix
+            pipelinechannel--s3_secret_key:
+              componentInputParameter: s3_secret_key
+            pipelinechannel--use_s3:
+              componentInputParameter: use_s3
+        taskInfo:
+          name: condition-1
+        triggerPolicy:
+          condition: inputs.parameter_values['pipelinechannel--use_s3'] == true
+      discover-documents:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-discover-documents
+        inputs:
+          parameters:
+            documents_path:
+              componentInputParameter: documents_path
+            file_extensions:
+              componentInputParameter: file_extensions
+        taskInfo:
+          name: discover-documents
+      ingest-document-batch:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-ingest-document-batch
+        dependentTasks:
+        - discover-documents
+        inputs:
+          artifacts:
+            discovered_files:
+              taskOutputArtifact:
+                outputArtifactKey: discovered_files
+                producerTask: discover-documents
+          parameters:
+            batch_size:
+              componentInputParameter: batch_size
+            collection_name:
+              componentInputParameter: collection_name
+            service_url:
+              componentInputParameter: service_url
+        taskInfo:
+          name: ingest-document-batch
+      verify-ingestion:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-verify-ingestion
+        dependentTasks:
+        - ingest-document-batch
+        inputs:
+          artifacts:
+            results:
+              taskOutputArtifact:
+                outputArtifactKey: results
+                producerTask: ingest-document-batch
+          parameters:
+            db_host:
+              componentInputParameter: db_host
+            db_name:
+              componentInputParameter: db_name
+            db_password:
+              componentInputParameter: db_password
+            db_port:
+              componentInputParameter: db_port
+            db_user:
+              componentInputParameter: db_user
+        taskInfo:
+          name: verify-ingestion
+  inputDefinitions:
+    parameters:
+      batch_size:
+        defaultValue: 10.0
+        description: Number of documents to process in each batch
+        isOptional: true
+        parameterType: NUMBER_INTEGER
+      collection_name:
+        defaultValue: default
+        description: Name of the collection to ingest documents into
+        isOptional: true
+        parameterType: STRING
+      db_host:
+        defaultValue: postgres-pgvector.servicenow-ai-poc.svc.cluster.local
+        description: PostgreSQL host (cluster-internal)
+        isOptional: true
+        parameterType: STRING
+      db_name:
+        defaultValue: ragdb
+        description: PostgreSQL database name
+        isOptional: true
+        parameterType: STRING
+      db_password:
+        defaultValue: ''
+        description: PostgreSQL password (required)
+        isOptional: true
+        parameterType: STRING
+      db_port:
+        defaultValue: '5432'
+        description: PostgreSQL port
+        isOptional: true
+        parameterType: STRING
+      db_user:
+        defaultValue: raguser
+        description: PostgreSQL user
+        isOptional: true
+        parameterType: STRING
+      documents_path:
+        defaultValue: /tmp/documents
+        description: Path to documents directory (destination for S3 or mounted PVC)
+        isOptional: true
+        parameterType: STRING
+      file_extensions:
+        defaultValue:
+        - .md
+        - .txt
+        - .html
+        description: List of file extensions to process
+        isOptional: true
+        parameterType: LIST
+      s3_access_key:
+        defaultValue: ''
+        description: S3 access key
+        isOptional: true
+        parameterType: STRING
+      s3_bucket:
+        defaultValue: ''
+        description: S3 bucket name
+        isOptional: true
+        parameterType: STRING
+      s3_endpoint:
+        defaultValue: ''
+        description: S3 endpoint URL (e.g., https://your-minio-endpoint)
+        isOptional: true
+        parameterType: STRING
+      s3_prefix:
+        defaultValue: ''
+        description: Prefix/folder in bucket (e.g., "kb/")
+        isOptional: true
+        parameterType: STRING
+      s3_secret_key:
+        defaultValue: ''
+        description: S3 secret key
+        isOptional: true
+        parameterType: STRING
+      service_url:
+        defaultValue: http://vector-search-service.servicenow-ai-poc.svc.cluster.local:8000
+        description: URL of the vector-search-service (cluster-internal)
+        isOptional: true
+        parameterType: STRING
+      use_s3:
+        defaultValue: true
+        description: If True, download from S3/Minio first. If False, use documents_path
+          directly
+        isOptional: true
+        parameterType: BOOLEAN
+schemaVersion: 2.1.0
+sdkVersion: kfp-2.13.0

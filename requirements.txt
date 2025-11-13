@@ -1,0 +1,7 @@
+# KubeFlow Pipeline SDK
+kfp==2.9.0
+
+# For local testing (optional)
+boto3>=1.28.0
+requests>=2.31.0
+psycopg2-binary>=2.9.9

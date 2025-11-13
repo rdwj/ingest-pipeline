@@ -1,0 +1,65 @@
+# Example Pipeline Parameters for OpenShift AI
+# Copy and modify these values when creating a pipeline run
+
+# Document Source Configuration
+use_s3: true
+documents_path: /tmp/documents
+file_extensions:
+  - .md
+  - .txt
+  - .html
+
+# S3/Minio Configuration
+# IMPORTANT: Replace these with your actual values
+s3_endpoint: https://your-minio-endpoint
+s3_bucket: kb-documents
+s3_prefix: data/
+s3_access_key: YOUR_MINIO_ACCESS_KEY_HERE
+s3_secret_key: YOUR_MINIO_SECRET_KEY_HERE
+
+# Service Configuration (cluster-internal URLs)
+# Adjust namespace if your services are deployed elsewhere
+service_url: http://vector-search-service.servicenow-ai-poc.svc.cluster.local:8000
+collection_name: default  # Collection must exist in vector-search-service
+batch_size: 10
+
+# Database Configuration (cluster-internal)
+# Adjust namespace if PostgreSQL is deployed elsewhere
+db_host: postgres-pgvector.servicenow-ai-poc.svc.cluster.local
+db_port: 5432
+db_user: raguser
+db_password: YOUR_DATABASE_PASSWORD_HERE  # Get from OpenShift secret
+db_name: ragdb
+
+# ============================================================================
+# How to get your values:
+# ============================================================================
+
+# 1. Get Minio credentials:
+#    oc get secret minio-credentials -n servicenow-ai-poc -o yaml
+#    Then base64 decode the access key and secret key
+
+# 2. Get Database password:
+#    oc get secret postgres-pgvector-secret -n servicenow-ai-poc \
+#      -o jsonpath='{.data.POSTGRES_PASSWORD}' | base64 -d
+
+# 3. Verify Minio endpoint:
+#    Use your MinIO API endpoint URL
+
+# 4. Verify service URLs:
+#    oc get svc -n servicenow-ai-poc
+#    Look for doc-ingest-service and postgres-pgvector
+#    Format: http://SERVICE_NAME.NAMESPACE.svc.cluster.local:PORT
+
+# ============================================================================
+# Alternative Configuration: Local/PVC mode (without S3)
+# ============================================================================
+# If you want to skip Minio and use a mounted PVC instead:
+#
+# use_s3: false
+# documents_path: /data/kb  # Must be a mounted PVC with your documents
+# s3_endpoint: ""
+# s3_bucket: ""
+# s3_prefix: ""
+# s3_access_key: ""
+# s3_secret_key: ""
