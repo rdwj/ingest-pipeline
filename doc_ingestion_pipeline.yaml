@@ -23,8 +23,7 @@ components:
     dag:
       tasks:
         download-from-s3:
-          cachingOptions:
-            enableCache: true
+          cachingOptions: {}
           componentRef:
             name: comp-download-from-s3
           inputs:
@@ -387,8 +386,7 @@ root:
         triggerPolicy:
           condition: inputs.parameter_values['pipelinechannel--use_s3'] == true
       discover-documents:
-        cachingOptions:
-          enableCache: true
+        cachingOptions: {}
         componentRef:
           name: comp-discover-documents
         inputs:
@@ -400,8 +398,7 @@ root:
         taskInfo:
           name: discover-documents
       ingest-document-batch:
-        cachingOptions:
-          enableCache: true
+        cachingOptions: {}
         componentRef:
           name: comp-ingest-document-batch
         dependentTasks:
@@ -422,8 +419,7 @@ root:
         taskInfo:
           name: ingest-document-batch
       verify-ingestion:
-        cachingOptions:
-          enableCache: true
+        cachingOptions: {}
         componentRef:
           name: comp-verify-ingestion
         dependentTasks:

@@ -334,12 +334,14 @@ def document_ingestion_pipeline(
             s3_secret_key=s3_secret_key,
             download_path=documents_path
         )
+        download_task.set_caching_options(False)
 
     # Step 1: Discover documents
     discover_task = discover_documents(
         documents_path=documents_path,
         file_extensions=file_extensions
     )
+    discover_task.set_caching_options(False)
 
     # Step 2: Ingest documents in batches
     ingest_task = ingest_document_batch(
@@ -348,6 +350,7 @@ def document_ingestion_pipeline(
         collection_name=collection_name,
         batch_size=batch_size
     )
+    ingest_task.set_caching_options(False)
 
     # Step 3: Verify ingestion
     verify_task = verify_ingestion(
@@ -358,6 +361,7 @@ def document_ingestion_pipeline(
         db_password=db_password,
         db_name=db_name
     )
+    verify_task.set_caching_options(False)
 
 
 if __name__ == "__main__":
