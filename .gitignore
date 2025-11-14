@@ -25,3 +25,5 @@ ENV/
 *.log
 test-data/
 .pytest_cache/
+
+run_output/

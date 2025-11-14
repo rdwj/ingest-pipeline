@@ -68,6 +68,10 @@ components:
           parameterType: LIST
     outputDefinitions:
       artifacts:
+        diagnostics:
+          artifactType:
+            schemaTitle: system.Dataset
+            schemaVersion: 0.0.1
         discovered_files:
           artifactType:
             schemaTitle: system.Dataset
@@ -166,14 +170,38 @@ deploymentSpec:
           '
         - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
           \ *\n\ndef discover_documents(\n    documents_path: str,\n    file_extensions:\
-          \ List[str],\n    discovered_files: Output[Dataset]\n):\n    \"\"\"Discover\
-          \ all documents in the specified path\"\"\"\n    import os\n    import json\n\
-          \n    files = []\n    for root, _, filenames in os.walk(documents_path):\n\
-          \        for filename in filenames:\n            if any(filename.endswith(ext)\
-          \ for ext in file_extensions):\n                full_path = os.path.join(root,\
-          \ filename)\n                files.append(full_path)\n\n    print(f\"Discovered\
-          \ {len(files)} files\")\n\n    # Write discovered files to output\n    with\
-          \ open(discovered_files.path, 'w') as f:\n        json.dump(files, f)\n\n"
+          \ List[str],\n    discovered_files: Output[Dataset],\n    diagnostics: Output[Dataset]\n\
+          ):\n    \"\"\"Discover all documents in the specified path\"\"\"\n    import\
+          \ os\n    import json\n\n    print(f\"=== DISCOVERY DIAGNOSTICS ===\")\n\
+          \    print(f\"Search path: {documents_path}\")\n    print(f\"Looking for\
+          \ extensions: {file_extensions}\")\n    print(f\"Path exists: {os.path.exists(documents_path)}\"\
+          )\n    print(f\"Path is directory: {os.path.isdir(documents_path)}\")\n\n\
+          \    # List all contents\n    if os.path.exists(documents_path):\n     \
+          \   print(f\"\\nContents of {documents_path}:\")\n        try:\n       \
+          \     for item in os.listdir(documents_path):\n                full_path\
+          \ = os.path.join(documents_path, item)\n                item_type = \"DIR\"\
+          \ if os.path.isdir(full_path) else \"FILE\"\n                print(f\" \
+          \ [{item_type}] {item}\")\n        except Exception as e:\n            print(f\"\
+          \  ERROR listing directory: {e}\")\n    else:\n        print(f\"  Path does\
+          \ not exist!\")\n\n    # Walk and discover\n    files = []\n    all_files_found\
+          \ = []\n    for root, dirs, filenames in os.walk(documents_path):\n    \
+          \    print(f\"\\nWalking: {root}\")\n        print(f\"  Subdirs: {dirs}\"\
+          )\n        print(f\"  Files: {filenames}\")\n\n        for filename in filenames:\n\
+          \            full_path = os.path.join(root, filename)\n            all_files_found.append(full_path)\n\
+          \n            if any(filename.endswith(ext) for ext in file_extensions):\n\
+          \                files.append(full_path)\n                print(f\"  \u2713\
+          \ MATCHED: {filename}\")\n            else:\n                print(f\" \
+          \ \u2717 SKIPPED: {filename}\")\n\n    print(f\"\\n=== SUMMARY ===\")\n\
+          \    print(f\"Total files found: {len(all_files_found)}\")\n    print(f\"\
+          Matching files: {len(files)}\")\n    print(f\"Discovered {len(files)} files\"\
+          )\n\n    # Save diagnostics\n    diag_data = {\n        \"search_path\"\
+          : documents_path,\n        \"extensions\": file_extensions,\n        \"\
+          path_exists\": os.path.exists(documents_path),\n        \"total_files_found\"\
+          : len(all_files_found),\n        \"matching_files\": len(files),\n     \
+          \   \"all_files\": all_files_found,\n        \"matched_files\": files\n\
+          \    }\n\n    with open(diagnostics.path, 'w') as f:\n        json.dump(diag_data,\
+          \ f, indent=2)\n\n    # Write discovered files to output\n    with open(discovered_files.path,\
+          \ 'w') as f:\n        json.dump(files, f)\n\n"
         image: registry.access.redhat.com/ubi9/python-311:latest
     exec-download-from-s3:
       container:

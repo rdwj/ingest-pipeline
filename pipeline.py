@@ -89,20 +89,68 @@ def download_from_s3(
 def discover_documents(
     documents_path: str,
     file_extensions: List[str],
-    discovered_files: Output[Dataset]
+    discovered_files: Output[Dataset],
+    diagnostics: Output[Dataset]
 ):
     """Discover all documents in the specified path"""
     import os
     import json
 
-    files = []
-    for root, _, filenames in os.walk(documents_path):
-        for filename in filenames:
-            if any(filename.endswith(ext) for ext in file_extensions):
-                full_path = os.path.join(root, filename)
-                files.append(full_path)
+    print(f"=== DISCOVERY DIAGNOSTICS ===")
+    print(f"Search path: {documents_path}")
+    print(f"Looking for extensions: {file_extensions}")
+    print(f"Path exists: {os.path.exists(documents_path)}")
+    print(f"Path is directory: {os.path.isdir(documents_path)}")
 
+    # List all contents
+    if os.path.exists(documents_path):
+        print(f"\nContents of {documents_path}:")
+        try:
+            for item in os.listdir(documents_path):
+                full_path = os.path.join(documents_path, item)
+                item_type = "DIR" if os.path.isdir(full_path) else "FILE"
+                print(f"  [{item_type}] {item}")
+        except Exception as e:
+            print(f"  ERROR listing directory: {e}")
+    else:
+        print(f"  Path does not exist!")
+
+    # Walk and discover
+    files = []
+    all_files_found = []
+    for root, dirs, filenames in os.walk(documents_path):
+        print(f"\nWalking: {root}")
+        print(f"  Subdirs: {dirs}")
+        print(f"  Files: {filenames}")
+
+        for filename in filenames:
+            full_path = os.path.join(root, filename)
+            all_files_found.append(full_path)
+
+            if any(filename.endswith(ext) for ext in file_extensions):
+                files.append(full_path)
+                print(f"  ✓ MATCHED: {filename}")
+            else:
+                print(f"  ✗ SKIPPED: {filename}")
+
+    print(f"\n=== SUMMARY ===")
+    print(f"Total files found: {len(all_files_found)}")
+    print(f"Matching files: {len(files)}")
     print(f"Discovered {len(files)} files")
+
+    # Save diagnostics
+    diag_data = {
+        "search_path": documents_path,
+        "extensions": file_extensions,
+        "path_exists": os.path.exists(documents_path),
+        "total_files_found": len(all_files_found),
+        "matching_files": len(files),
+        "all_files": all_files_found,
+        "matched_files": files
+    }
+
+    with open(diagnostics.path, 'w') as f:
+        json.dump(diag_data, f, indent=2)
 
     # Write discovered files to output
     with open(discovered_files.path, 'w') as f:
